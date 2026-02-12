@@ -30,20 +30,36 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         
-        let history = [];
-        let userAuth = null;
-
-        // Rendiamo le funzioni accessibili globalmente esportandole su window
-        window.db = db;
-        window.auth = auth;
-
-        async function initAuth() {
-            try {
-                await signInAnonymously(auth);
-            } catch (e) {
-                console.error("Errore Autenticazione:", e);
+        window.addEntry = async (taskId) => {
+            if (!auth.currentUser) {
+                console.error("Utente non autenticato");
+                return;
             }
-        }
+            const task = TASKS.find(t => t.id === taskId);
+            const entryId = Date.now().toString();
+            try {
+                await setDoc(doc(db, "history", entryId), {
+                    user: localStorage.getItem('family_user') || 'Papà',
+                    label: task.label,
+                    points: task.points,
+                    date: new Date().toISOString(),
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    archived: false
+                });
+                console.log("Dato inviato con successo!");
+            } catch (e) { console.error("Errore aggiunta:", e); }
+        };
+
+        window.removeEntry = async (id) => {
+            await deleteDoc(doc(db, "history", id));
+        };
+
+        window.archiveCurrentPeriod = async () => {
+            const active = (window.currentHistory || []).filter(h => !h.archived);
+            if (active.length === 0) return;
+            const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
+            await Promise.all(promises);
+        };
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -301,3 +317,4 @@
 </script>
 </body>
 </html>
+
