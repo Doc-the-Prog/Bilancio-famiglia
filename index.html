@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Load Tracker</title>
     
-    <!-- ICONA PERSONALIZZATA (Emoji) -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>">
-   
+    <!-- ICONA PERSONALIZZATA (Emoji) con versione per forzare aggiornamento cache -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK -->
     <script type="module">
@@ -16,7 +16,7 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection, signInAnonymously, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // --- CONFIGURAZIONE PERSONALE AGGIORNATA ---
+        // --- CONFIGURAZIONE PERSONALE ---
         const firebaseConfig = {
             apiKey: "AIzaSyBi1H5dULv4P_fxLQEX9uG4H8NXb9CoZ08",
             authDomain: "bilancio-famiglia.firebaseapp.com",
@@ -25,7 +25,6 @@
             messagingSenderId: "203884053026",
             appId: "1:203884053026:web:d59091e9b843cf9f49007b"
         };
-        // -------------------------------------------
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -34,40 +33,38 @@
         let history = [];
         let userAuth = null;
 
-        const fetchWithRetry = async (fn, retries = 5, delay = 1000) => {
-            for (let i = 0; i < retries; i++) {
-                try { return await fn(); } catch (err) {
-                    if (i === retries - 1) throw err;
-                    await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
-                }
-            }
-        };
+        // Rendiamo le funzioni accessibili globalmente esportandole su window
+        window.db = db;
+        window.auth = auth;
 
         async function initAuth() {
             try {
-                await fetchWithRetry(() => signInAnonymously(auth));
+                await signInAnonymously(auth);
             } catch (e) {
                 console.error("Errore Autenticazione:", e);
-                document.body.insertAdjacentHTML('afterbegin', '<div class="bg-red-500 text-white p-4 text-center">Errore di connessione al database. Riprova più tardi.</div>');
             }
         }
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userAuth = user;
+                window.userAuth = user; // Accessibile globalmente
                 const q = collection(db, "history");
                 onSnapshot(q, (snapshot) => {
                     history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     history.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    window.currentHistory = history; // Salviamo in window per updateUI
                     updateUI();
-                }, (error) => {
-                    console.error("Errore Database:", error);
                 });
             }
         });
 
+        // Funzioni Database collegate a Window
         window.addEntry = async (taskId) => {
-            if (!userAuth) return;
+            if (!window.userAuth) {
+                console.error("Utente non autenticato");
+                return;
+            }
             const task = TASKS.find(t => t.id === taskId);
             const entryId = Date.now().toString();
             try {
@@ -79,23 +76,21 @@
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     archived: false
                 });
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Errore aggiunta:", e); }
         };
 
         window.removeEntry = async (id) => {
-            if (!userAuth) return;
             await deleteDoc(doc(db, "history", id));
         };
 
         window.archiveCurrentPeriod = async () => {
-            if (!userAuth || history.filter(h => !h.archived).length === 0) return;
-            const toArchive = history.filter(h => !h.archived);
-            const promises = toArchive.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
+            const active = history.filter(h => !h.archived);
+            if (active.length === 0) return;
+            const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
             await Promise.all(promises);
         };
 
         window.removeMonth = async (monthKey) => {
-            if (!userAuth) return;
             const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
             await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
         };
@@ -241,7 +236,8 @@
     }
 
     function updateUI() {
-        const active = history.filter(h => !h.archived);
+        const hist = window.currentHistory || [];
+        const active = hist.filter(h => !h.archived);
         const stats = { 'Papà': 0, 'Mamma': 0 };
         active.forEach(h => stats[h.user] += h.points);
         const total = stats['Papà'] + stats['Mamma'];
@@ -274,7 +270,8 @@
 
     function renderArchive() {
         const content = document.getElementById('archive-content');
-        const archived = history.filter(h => h.archived);
+        const hist = window.currentHistory || [];
+        const archived = hist.filter(h => h.archived);
         if (archived.length === 0) {
             content.innerHTML = '<p class="text-center text-slate-400 py-10 italic text-sm">Nessun dato archiviato.</p>';
             return;
@@ -304,6 +301,3 @@
 </script>
 </body>
 </html>
-
-
-
