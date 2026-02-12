@@ -206,9 +206,21 @@
     };
 
     window.dbRemoveMonth = async (monthKey) => {
-        const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
-        await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
-    };
+    const confermata = confirm(`Sei sicuro di voler eliminare definitivamente tutti i dati di ${monthKey}? Questa azione non si può annullare.`);
+    
+    if (confermata) {
+        try {
+            const toDelete = history.filter(h => 
+                new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey
+            );
+            await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
+            console.log(`Mese ${monthKey} eliminato con successo.`);
+        } catch (e) {
+            console.error("Errore durante l'eliminazione del mese:", e);
+            alert("Si è verificato un errore durante l'eliminazione.");
+        }
+    }
+};
 
     document.getElementById('reset-trigger').onclick = async () => {
         if(!confirm("Vuoi archiviare i punti attuali e iniziare un nuovo periodo?")) return;
@@ -289,4 +301,5 @@
 </script>
 </body>
 </html>
+
 
