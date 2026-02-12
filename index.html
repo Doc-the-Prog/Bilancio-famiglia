@@ -2,21 +2,19 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Load Tracker</title>
     
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Bilancio">
-    
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233b82f6%22/><text y=%2275%22 x=%2210%22 font-family=%22sans-serif%22 font-size=%2270%22>⚖️</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233b82f6%22/><text y=%2275%22 x=%2210%22 font-family=%22sans-serif%22 font-size=%2270%22>⚖️</text></svg>">
+    <!-- ICONA PERSONALIZZATA (Emoji) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
 
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, signInAnonymously, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -31,27 +29,46 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
         
         let history = [];
 
-        // Debug Console Visiva
-        const logDebug = (msg, isError = false) => {
-            const el = document.getElementById('debug-log');
-            el.innerText = msg;
-            el.className = isError ? "text-[10px] text-red-500 font-bold" : "text-[10px] text-slate-400";
-            console.log(msg);
+        // Gestione Login Google
+        window.loginGoogle = async () => {
+            try {
+                await signInWithPopup(auth, provider);
+            } catch (e) {
+                console.error("Errore Login:", e);
+            }
         };
 
-        window.addEntry = async (taskId) => {
-            logDebug("Tentativo invio...");
-            if (!auth.currentUser) {
-                logDebug("Errore: Utente non autenticato", true);
-                return;
+        onAuthStateChanged(auth, (user) => {
+            const loginView = document.getElementById('login-view');
+            const mainApp = document.getElementById('app');
+
+            if (user) {
+                loginView.classList.add('hidden');
+                mainApp.classList.remove('hidden');
+                window.userAuth = user;
+
+                const q = collection(db, "history");
+                onSnapshot(q, (snapshot) => {
+                    history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    window.currentHistory = history;
+                    updateUI();
+                });
+            } else {
+                loginView.classList.remove('hidden');
+                mainApp.classList.add('hidden');
             }
-            
+        });
+
+        // Funzioni Database
+        window.addEntry = async (taskId) => {
+            if (!auth.currentUser) return;
             const task = TASKS.find(t => t.id === taskId);
             const entryId = Date.now().toString();
-            
             try {
                 await setDoc(doc(db, "history", entryId), {
                     user: localStorage.getItem('family_user') || 'Papà',
@@ -59,118 +76,108 @@
                     points: task.points,
                     date: new Date().toISOString(),
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    archived: false
+                    archived: false,
+                    email: auth.currentUser.email
                 });
-                logDebug("Ultimo invio: OK");
-            } catch (e) { 
-                logDebug("Errore Firebase: " + e.code, true);
-            }
+            } catch (e) { console.error("Errore:", e); }
         };
 
         window.removeEntry = async (id) => {
-            try { await deleteDoc(doc(db, "history", id)); } catch(e) { logDebug("Errore delete", true); }
+            await deleteDoc(doc(db, "history", id));
         };
 
         window.archiveCurrentPeriod = async () => {
             const active = history.filter(h => !h.archived);
             if (active.length === 0) return;
-            try {
-                const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
-                await Promise.all(promises);
-                logDebug("Reset OK");
-            } catch(e) { logDebug("Errore Reset", true); }
+            const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
+            await Promise.all(promises);
         };
 
         window.removeMonth = async (monthKey) => {
             const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
             await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
         };
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                logDebug("Connesso.");
-                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500";
-                
-                onSnapshot(collection(db, "history"), (snapshot) => {
-                    history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    history.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    window.currentHistory = history;
-                    updateUI();
-                }, (err) => {
-                    logDebug("Errore snapshot: " + err.code, true);
-                });
-            } else {
-                logDebug("Autenticazione in corso...");
-                signInAnonymously(auth).catch(e => logDebug("Auth Fallita: " + e.code, true));
-            }
-        });
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-        .task-card:active { transform: scale(0.95); opacity: 0.8; }
-        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .task-card:active { transform: scale(0.95); }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
         .modal-view { display: none; position: fixed; inset: 0; background: white; z-index: 100; overflow-y: auto; }
         .modal-view.active { display: block; }
-        .icon-container { min-height: 40px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.25rem; font-size: 1.5rem; }
+        .icon-container { min-height: 48px; width: 100%; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; font-size: 1.8rem; gap: 4px; white-space: nowrap; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-10">
 
-<div id="app" class="max-w-md mx-auto px-4 pt-6">
-    <header class="mb-6">
-        <div class="flex justify-between items-start mb-4">
-            <div>
-                <div class="flex items-center gap-2">
-                    <div id="status-dot" class="w-2 h-2 rounded-full bg-orange-400"></div>
-                    <h1 class="text-lg font-bold text-slate-800 italic">Family Load</h1>
-                </div>
-                <div id="debug-log" class="text-[10px] text-slate-400">Inizializzazione...</div>
-            </div>
-            <button onclick="toggleArchive(true)" class="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Storico</button>
+<!-- Schermata di Login -->
+<div id="login-view" class="hidden fixed inset-0 flex items-center justify-center bg-slate-50 p-6 z-[200]">
+    <div class="text-center w-full max-w-xs">
+        <div class="text-6xl mb-6">⚖️</div>
+        <h1 class="text-2xl font-bold text-slate-800 mb-2 italic">Family Load</h1>
+        <p class="text-slate-500 mb-8 text-sm leading-relaxed">Accedi per gestire il bilancio familiare e sincronizzare i dati.</p>
+        <button onclick="window.loginGoogle()" class="w-full bg-white border border-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 active:scale-95 transition-transform">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18">
+            Accedi con Google
+        </button>
+    </div>
+</div>
+
+<!-- App Principale -->
+<div id="app" class="hidden max-w-md mx-auto px-4 pt-6">
+    <header class="mb-6 text-center">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl font-bold text-slate-800 italic">Bilancio Famiglia</h1>
+            <button onclick="toggleArchive(true)" class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Storico</button>
         </div>
-        
         <div class="flex justify-center p-1 bg-slate-200 rounded-xl">
             <button onclick="setUser('Papà')" id="btn-Papà" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Papà</button>
             <button onclick="setUser('Mamma')" id="btn-Mamma" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Mamma</button>
         </div>
     </header>
 
-    <section class="bg-white rounded-2xl p-6 shadow-sm mb-6 border border-slate-100 text-center">
+    <section class="bg-white rounded-2xl p-6 shadow-sm mb-6 border border-slate-100">
         <div class="w-full h-10 bg-slate-100 rounded-full overflow-hidden flex border-4 border-white shadow-inner">
-            <div id="bar-Papà" class="h-full bg-blue-500 transition-all duration-700" style="width: 50%"></div>
-            <div id="bar-Mamma" class="h-full bg-rose-400 transition-all duration-700" style="width: 50%"></div>
+            <div id="bar-Papà" class="h-full bg-blue-500 transition-all duration-1000 ease-in-out" style="width: 50%"></div>
+            <div id="bar-Mamma" class="h-full bg-rose-400 transition-all duration-1000 ease-in-out" style="width: 50%"></div>
         </div>
-        <div class="flex justify-between mt-3 text-sm font-bold px-1">
-            <span id="pts-Papà" class="text-blue-600">0 pt</span>
-            <span id="pts-Mamma" class="text-rose-500">0 pt</span>
+        <div class="flex justify-between mt-4 text-sm font-black px-1">
+            <div class="flex flex-col">
+                <span class="text-slate-400 text-[10px] uppercase">Papà</span>
+                <span id="pts-Papà" class="text-blue-600 text-lg">0 pt</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <span class="text-slate-400 text-[10px] uppercase">Mamma</span>
+                <span id="pts-Mamma" class="text-rose-500 text-lg">0 pt</span>
+            </div>
         </div>
     </section>
 
-    <nav class="flex border-b border-slate-200 mb-6 sticky top-0 bg-slate-50/90 backdrop-blur-sm">
-        <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-3 font-semibold text-xs">Figlia</button>
-        <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-3 font-semibold text-xs">Casa</button>
-        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-3 font-semibold text-xs">Gestione</button>
-        <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-3 font-semibold text-xs">Altro</button>
+    <nav class="flex border-b border-slate-200 mb-6 bg-white rounded-t-xl overflow-hidden shadow-sm">
+        <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-3 font-bold text-xs">Figlia</button>
+        <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-3 font-bold text-xs">Casa</button>
+        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-3 font-bold text-xs">Gestione</button>
+        <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-3 font-bold text-xs">Altro</button>
     </nav>
 
     <div id="task-grid" class="grid grid-cols-2 gap-3"></div>
 
     <section class="mt-10">
-        <div class="flex justify-between items-center mb-4 px-1">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Attività recenti</h3>
-            <button onclick="window.archiveCurrentPeriod()" class="text-[10px] text-slate-400 font-bold border border-slate-200 px-2 py-1 rounded">RESET</button>
+        <div class="flex justify-between items-end mb-4 px-1">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider italic">Ultime attività</h3>
+            <button onclick="window.archiveCurrentPeriod()" class="text-[9px] bg-slate-200 text-slate-500 px-2 py-1 rounded font-bold uppercase">Reset</button>
         </div>
         <div id="recent-log" class="space-y-2"></div>
     </section>
 </div>
 
+<!-- Modal Storico -->
 <div id="archive-view" class="modal-view">
     <div class="max-w-md mx-auto px-4 pt-6">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-xl font-bold">Storico</h2>
-            <button onclick="toggleArchive(false)" class="text-slate-400 text-2xl">&times;</button>
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-bold text-slate-800">Storico</h2>
+            <button onclick="toggleArchive(false)" class="text-slate-400 p-2 text-2xl">&times;</button>
         </div>
         <div id="archive-content" class="space-y-4 pb-10"></div>
     </div>
@@ -179,30 +186,36 @@
 <script>
     const TASKS = [
         { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
-        { id: 'prepara_scuola', label: 'Prep. Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
-        { id: 'prepara_nanna', label: 'Prep. Nanna', points: 3, cat: 'Bambina', icon: '🌙' },
+        { id: 'prepara_scuola', label: 'Prep. per Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
+        { id: 'prepara_nanna', label: 'Prep. per Nanna', points: 3, cat: 'Bambina', icon: '🌙' },
         { id: 'addormentamento', label: 'Addormentamento', points: 3, cat: 'Bambina', icon: '😴' },
-        { id: 'vestizione_figlia', label: 'Vestizione', points: 2, cat: 'Bambina', icon: '👗' },
+        { id: 'vestizione_figlia', label: 'Vestizione Generico', points: 2, cat: 'Bambina', icon: '👗' },
         { id: 'doccia_figlia', label: 'Doccia', points: 3, cat: 'Bambina', icon: '🚿' },
         { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
-        { id: 'gioco', label: 'Gioco (30 min)', points: 2, cat: 'Bambina', icon: '🧸' },
-        { id: 'spostamenti', label: 'Trasporto', points: 3, cat: 'Bambina', icon: '🏎️' },
-        { id: 'lavastoviglie', label: 'Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼' },
-        { id: 'cucina_pasto', label: 'Prep. Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
-        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹' },
-        { id: 'lavatrice_carico', label: 'Lavatrice (Avvio)', points: 3, cat: 'Casa', icon: '👕' },
-        { id: 'lavatrice_stendere', label: 'Lavatrice (Stendi)', points: 3, cat: 'Casa', icon: '🎏' },
+        { id: 'gioco', label: 'Gioco Insieme (30 min)', points: 2, cat: 'Bambina', icon: '🧸' },
+        { id: 'spostamenti', label: 'Scarrozzare figlia', points: 3, cat: 'Bambina', icon: '🏎️' },
+        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼🍽️' },
+        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
+        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹🍴' },
+        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', points: 3, cat: 'Casa', icon: '🧼👕' },
+        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', points: 3, cat: 'Casa', icon: '🎏👕' },
         { id: 'aspirapolvere', label: 'Aspirapolvere', points: 3, cat: 'Casa', icon: '🧹' },
-        { id: 'riordinare', label: 'Riordinare', points: 3, cat: 'Casa', icon: '🔀' },
-        { id: 'pavimenti_parziale', label: 'Lavare Pavimenti', points: 5, cat: 'Casa', icon: '🧼' },
-        { id: 'bagno_parziale', label: 'Pulizia Bagno', points: 5, cat: 'Casa', icon: '🚽' },
-        { id: 'cottura', label: 'Piano Cottura', points: 2, cat: 'Casa', icon: '🔥' },
-        { id: 'spesa', label: 'Spesa', points: 5, cat: 'Casa', icon: '🛒' },
+        { id: 'riordinare', label: 'Riordinare casa', points: 3, cat: 'Casa', icon: '🔀' },
+        { id: 'pavimenti_parziale', label: 'Lavare Pavimenti (cucina/soggiorno/ingresso)', points: 5, cat: 'Casa', icon: '🧼' },
+        { id: 'pavimenti_totale', label: 'Lavare Pavimenti (tutta casa)', points: 5, cat: 'Casa', icon: '🧼✨' },
+        { id: 'bagno_parziale', label: 'Pulizia Bagno (lavandino/bidet)', points: 5, cat: 'Casa', icon: '🚽' },
+        { id: 'bagno_totale', label: 'Pulizia Bagno (anche WC/doccia)', points: 5, cat: 'Casa', icon: '🚽✨' },
+        { id: 'cottura', label: 'Pulizia Piano Cottura', points: 2, cat: 'Casa', icon: '🔥' },
+        { id: 'piano_cucina', label: 'Pulizia Cucina (piano/mobili)', points: 1, cat: 'Casa', icon: '🧼🍳' },
+        { id: 'vestiti', label: 'Piegare Vestiti', points: 2, cat: 'Casa', icon: '🫳🏻👕' },
+        { id: 'spesa', label: 'Fare la spesa', points: 5, cat: 'Casa', icon: '🛒' },
         { id: 'burocrazia', label: 'Burocrazia', points: 4, cat: 'Testa', icon: '📂' },
         { id: 'menu', label: 'Menù', points: 3, cat: 'Testa', icon: '📜' },
-        { id: 'altro_1pt', label: 'Altro 1 pt', points: 1, cat: 'Altro', icon: '🛠️' },
-        { id: 'altro_3pt', label: 'Altro 3 pt', points: 3, cat: 'Altro', icon: '🛠️' },
-        { id: 'altro_5pt', label: 'Altro 5 pt', points: 5, cat: 'Altro', icon: '🛠️' },
+        { id: 'altro_1pt', label: 'Altro 1 pt.', points: 1, cat: 'Altro', icon: '🛠️1️⃣' },
+        { id: 'altro_2pt', label: 'Altro 2 pt.', points: 2, cat: 'Altro', icon: '🛠️2️⃣' },
+        { id: 'altro_3pt', label: 'Altro 3 pt.', points: 3, cat: 'Altro', icon: '🛠️3️⃣' },
+        { id: 'altro_4pt', label: 'Altro 4 pt.', points: 4, cat: 'Altro', icon: '🛠️4️⃣' },
+        { id: 'altro_5pt', label: 'Altro 5 pt.', points: 5, cat: 'Altro', icon: '🛠️5️⃣' },
     ];
 
     let currentTab = 'Bambina';
@@ -232,8 +245,8 @@
         grid.innerHTML = TASKS.filter(t => t.cat === currentTab).map(t => `
             <button onclick="window.addEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
                 <div class="icon-container">${t.icon}</div>
-                <span class="text-[11px] font-semibold text-slate-700 leading-tight">${t.label}</span>
-                <span class="text-[10px] text-slate-400 mt-2">+${t.points} PT</span>
+                <span class="text-[11px] font-bold text-slate-700 leading-tight">${t.label}</span>
+                <span class="text-[10px] font-black text-slate-400 mt-2 bg-slate-50 px-2 py-0.5 rounded-full">${t.points} PT</span>
             </button>
         `).join('');
     }
@@ -252,13 +265,15 @@
         document.getElementById('pts-Papà').innerText = `${stats['Papà']} pt`;
         document.getElementById('pts-Mamma').innerText = `${stats['Mamma']} pt`;
 
-        const logHtml = active.slice(0, 8).map(h => `
-            <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+        const logHtml = active.slice(0, 10).map(h => `
+            <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
                 <div class="flex items-center">
                     <div class="w-2 h-2 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} mr-3"></div>
-                    <span class="text-sm text-slate-700">${h.label}</span>
+                    <span class="font-bold text-slate-700 text-sm">${h.label}</span>
                 </div>
-                <button onclick="window.removeEntry('${h.id}')" class="text-slate-300 px-2 text-lg">×</button>
+                <div class="flex items-center text-[10px] text-slate-400">
+                    <button onclick="window.removeEntry('${h.id}')" class="ml-3 text-slate-300">✕</button>
+                </div>
             </div>
         `).join('');
         document.getElementById('recent-log').innerHTML = logHtml || '<p class="text-center text-slate-300 py-4 text-xs italic">Nessun dato</p>';
@@ -274,7 +289,7 @@
         const hist = window.currentHistory || [];
         const archived = hist.filter(h => h.archived);
         if (archived.length === 0) {
-            content.innerHTML = '<p class="text-center text-slate-400 py-10 italic text-sm">Archivio vuoto.</p>';
+            content.innerHTML = '<p class="text-center text-slate-400 py-10 italic text-sm">Nessun dato archiviato.</p>';
             return;
         }
         const months = {};
@@ -284,14 +299,14 @@
             months[key][h.user] += h.points;
         });
         content.innerHTML = Object.keys(months).map(key => `
-            <div class="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
-                <div class="flex justify-between items-center mb-2 border-b border-slate-50 pb-2">
-                    <h3 class="text-xs font-bold text-slate-600 uppercase tracking-tighter">${key}</h3>
-                    <button onclick="window.removeMonth('${key}')" class="text-[9px] text-red-300 font-bold">ELIMINA</button>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-sm font-bold text-slate-700 capitalize">${key}</h3>
+                    <button onclick="window.removeMonth('${key}')" class="text-[9px] font-bold text-red-300">ELIMINA</button>
                 </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-blue-500 font-bold">Papà: ${months[key].Papà} pt</span>
-                    <span class="text-rose-500 font-bold">Mamma: ${months[key].Mamma} pt</span>
+                <div class="flex justify-between text-xs font-bold">
+                    <span class="text-blue-500">Papà: ${months[key].Papà} pt</span>
+                    <span class="text-rose-500">Mamma: ${months[key].Mamma} pt</span>
                 </div>
             </div>
         `).join('');
