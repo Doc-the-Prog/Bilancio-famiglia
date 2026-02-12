@@ -63,7 +63,7 @@
     <section class="mt-10">
         <div class="flex justify-between items-end mb-4 px-1">
             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider italic">Ultime attività</h3>
-            <button onclick="window.archiveCurrentPeriod()" class="text-[9px] bg-slate-200 text-slate-500 px-2 py-1 rounded font-bold uppercase">Reset</button>
+            <button id="btn-reset" class="text-[9px] bg-slate-200 text-slate-500 px-2 py-1 rounded font-bold uppercase">Reset</button>
         </div>
         <div id="recent-log" class="space-y-2"></div>
     </section>
@@ -79,25 +79,7 @@
     </div>
 </div>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, onSnapshot, collection, signInAnonymously, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyBi1H5dULv4P_fxLQEX9uG4H8NXb9CoZ08",
-        authDomain: "bilancio-famiglia.firebaseapp.com",
-        projectId: "bilancio-famiglia",
-        storageBucket: "bilancio-famiglia.firebasestorage.app",
-        messagingSenderId: "203884053026",
-        appId: "1:203884053026:web:d59091e9b843cf9f49007b"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-
-    // Dati dei compiti (Spostati qui per visibilità)
+<script>
     const TASKS = [
         { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
         { id: 'prepara_scuola', label: 'Prep. per Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
@@ -133,11 +115,8 @@
     ];
 
     let currentTab = 'Bambina';
-    let userAuth = null;
-    let history = [];
 
-    // --- ESPONIAMO LE FUNZIONI SU WINDOW PER I BOTTONI ---
-    window.setUser = (user) => {
+    function setUser(user) {
         localStorage.setItem('family_user', user);
         document.querySelectorAll('[id^="btn-"]').forEach(btn => {
             const isActive = btn.id === `btn-${user}`;
@@ -146,30 +125,61 @@
             btn.classList.toggle('text-slate-800', isActive);
             btn.classList.toggle('text-slate-500', !isActive);
         });
-    };
+    }
 
-    window.setTab = (tab) => {
+    function setTab(tab) {
         currentTab = tab;
         document.querySelectorAll('[id^="tab-"]').forEach(t => {
             t.classList.toggle('tab-active', t.id === `tab-${tab}`);
             t.classList.toggle('text-slate-400', t.id !== `tab-${tab}`);
         });
         renderTasks();
-    };
+    }
 
-    window.renderTasks = () => {
+    function renderTasks() {
         const grid = document.getElementById('task-grid');
         grid.innerHTML = TASKS.filter(t => t.cat === currentTab).map(t => `
-            <button onclick="window.addEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
+            <button onclick="handleAddEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
                 <div class="icon-container">${t.icon}</div>
                 <span class="text-[11px] font-bold text-slate-700 leading-tight">${t.label}</span>
                 <span class="text-[10px] font-black text-slate-400 mt-2 bg-slate-50 px-2 py-0.5 rounded-full">${t.points} PT</span>
             </button>
         `).join('');
+    }
+
+    function toggleArchive(show) {
+        document.getElementById('archive-view').classList.toggle('active', show);
+        if(show && window.triggerArchiveRender) window.triggerArchiveRender();
+    }
+
+    // Caricamento iniziale UI
+    window.onload = () => {
+        setUser(localStorage.getItem('family_user') || 'Papà');
+        setTab('Bambina');
+    };
+</script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot, collection, signInAnonymously, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBi1H5dULv4P_fxLQEX9uG4H8NXb9CoZ08",
+        authDomain: "bilancio-famiglia.firebaseapp.com",
+        projectId: "bilancio-famiglia",
+        storageBucket: "bilancio-famiglia.firebasestorage.app",
+        messagingSenderId: "203884053026",
+        appId: "1:203884053026:web:d59091e9b843cf9f49007b"
     };
 
-    window.addEntry = async (taskId) => {
-        if (!auth.currentUser) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    let history = [];
+
+    // Funzioni collegate globalmente
+    window.handleAddEntry = async (taskId) => {
         const task = TASKS.find(t => t.id === taskId);
         const entryId = Date.now().toString();
         try {
@@ -184,28 +194,23 @@
         } catch (e) { console.error("Errore invio:", e); }
     };
 
-    window.removeEntry = async (id) => {
+    window.handleRemoveEntry = async (id) => {
         await deleteDoc(doc(db, "history", id));
     };
 
-    window.archiveCurrentPeriod = async () => {
-        const active = history.filter(h => !h.archived);
-        if (active.length === 0) return;
-        const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
-        await Promise.all(promises);
-    };
-
-    window.removeMonth = async (monthKey) => {
+    window.handleRemoveMonth = async (monthKey) => {
         const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
         await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
     };
 
-    window.toggleArchive = (show) => {
-        document.getElementById('archive-view').classList.toggle('active', show);
-        if(show) renderArchive();
+    document.getElementById('btn-reset').onclick = async () => {
+        const active = history.filter(h => !h.archived);
+        const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
+        await Promise.all(promises);
     };
 
-    // --- LOGICHE DI AGGIORNAMENTO UI ---
+    window.triggerArchiveRender = () => renderArchive();
+
     function updateUI() {
         const active = history.filter(h => !h.archived);
         const stats = { 'Papà': 0, 'Mamma': 0 };
@@ -215,10 +220,10 @@
         const p1 = total === 0 ? 50 : (stats['Papà'] / total) * 100;
         const p2 = total === 0 ? 50 : (stats['Mamma'] / total) * 100;
         
-        document.getElementById('bar-Papà').style.width = `${p1}%`;
-        document.getElementById('bar-Mamma').style.width = `${p2}%`;
-        document.getElementById('pts-Papà').innerText = `${stats['Papà']} pt`;
-        document.getElementById('pts-Mamma').innerText = `${stats['Mamma']} pt`;
+        document.getElementById('bar-Papà').style.width = p1 + '%';
+        document.getElementById('bar-Mamma').style.width = p2 + '%';
+        document.getElementById('pts-Papà').innerText = stats['Papà'] + ' pt';
+        document.getElementById('pts-Mamma').innerText = stats['Mamma'] + ' pt';
 
         const logHtml = active.slice(0, 10).map(h => `
             <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
@@ -226,9 +231,7 @@
                     <div class="w-2 h-2 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} mr-3"></div>
                     <span class="font-bold text-slate-700 text-sm">${h.label}</span>
                 </div>
-                <div class="flex items-center text-[10px] text-slate-400">
-                    <button onclick="window.removeEntry('${h.id}')" class="ml-3 text-slate-300">✕</button>
-                </div>
+                <button onclick="handleRemoveEntry('${h.id}')" class="text-slate-300 text-xs">✕</button>
             </div>
         `).join('');
         document.getElementById('recent-log').innerHTML = logHtml || '<p class="text-center text-slate-300 py-4 text-xs italic">Nessun dato</p>';
@@ -251,7 +254,7 @@
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-2">
                 <div class="flex justify-between items-center mb-2">
                     <h3 class="text-sm font-bold text-slate-700 capitalize">${key}</h3>
-                    <button onclick="window.removeMonth('${key}')" class="text-[9px] font-bold text-red-300">ELIMINA</button>
+                    <button onclick="handleRemoveMonth('${key}')" class="text-[9px] font-bold text-red-300">ELIMINA</button>
                 </div>
                 <div class="flex justify-between text-xs font-bold">
                     <span class="text-blue-500">Papà: ${months[key].Papà} pt</span>
@@ -261,7 +264,6 @@
         `).join('');
     }
 
-    // --- INIZIALIZZAZIONE ---
     onAuthStateChanged(auth, (user) => {
         if (user) {
             onSnapshot(collection(db, "history"), (snapshot) => {
@@ -270,13 +272,9 @@
                 updateUI();
             });
         } else {
-            signInAnonymously(auth).catch(console.error);
+            signInAnonymously(auth);
         }
     });
-
-    // Stato iniziale
-    window.setUser(localStorage.getItem('family_user') || 'Papà');
-    window.renderTasks();
 </script>
 </body>
 </html>
