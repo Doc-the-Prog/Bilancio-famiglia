@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Load Tracker</title>
     
-    <!-- ICONA PERSONALIZZATA (Emoji) -->
+    <!-- ICONA PERSONALIZZATA (Emoji) con versione per forzare aggiornamento cache -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>?v=2">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, signInAnonymously, onAuthStateChanged, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
+        // --- CONFIGURAZIONE PERSONALE ---
         const firebaseConfig = {
             apiKey: "AIzaSyBi1H5dULv4P_fxLQEX9uG4H8NXb9CoZ08",
             authDomain: "bilancio-famiglia.firebaseapp.com",
@@ -29,44 +29,42 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const provider = new GoogleAuthProvider();
         
         let history = [];
+        let userAuth = null;
 
-        // Gestione Login Google
-        window.loginGoogle = async () => {
+        // Rendiamo le funzioni accessibili globalmente esportandole su window
+        window.db = db;
+        window.auth = auth;
+
+        async function initAuth() {
             try {
-                await signInWithPopup(auth, provider);
+                await signInAnonymously(auth);
             } catch (e) {
-                console.error("Errore Login:", e);
+                console.error("Errore Autenticazione:", e);
             }
-        };
+        }
 
         onAuthStateChanged(auth, (user) => {
-            const loginView = document.getElementById('login-view');
-            const mainApp = document.getElementById('app');
-
             if (user) {
-                loginView.classList.add('hidden');
-                mainApp.classList.remove('hidden');
-                window.userAuth = user;
-
+                userAuth = user;
+                window.userAuth = user; // Accessibile globalmente
                 const q = collection(db, "history");
                 onSnapshot(q, (snapshot) => {
                     history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     history.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    window.currentHistory = history;
+                    window.currentHistory = history; // Salviamo in window per updateUI
                     updateUI();
                 });
-            } else {
-                loginView.classList.remove('hidden');
-                mainApp.classList.add('hidden');
             }
         });
 
-        // Funzioni Database
+        // Funzioni Database collegate a Window
         window.addEntry = async (taskId) => {
-            if (!auth.currentUser) return;
+            if (!window.userAuth) {
+                console.error("Utente non autenticato");
+                return;
+            }
             const task = TASKS.find(t => t.id === taskId);
             const entryId = Date.now().toString();
             try {
@@ -76,10 +74,9 @@
                     points: task.points,
                     date: new Date().toISOString(),
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    archived: false,
-                    email: auth.currentUser.email
+                    archived: false
                 });
-            } catch (e) { console.error("Errore:", e); }
+            } catch (e) { console.error("Errore aggiunta:", e); }
         };
 
         window.removeEntry = async (id) => {
@@ -97,6 +94,8 @@
             const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
             await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
         };
+
+        initAuth();
     </script>
 
     <style>
@@ -111,21 +110,7 @@
 </head>
 <body class="bg-slate-50 min-h-screen pb-10">
 
-<!-- Schermata di Login -->
-<div id="login-view" class="hidden fixed inset-0 flex items-center justify-center bg-slate-50 p-6 z-[200]">
-    <div class="text-center w-full max-w-xs">
-        <div class="text-6xl mb-6">⚖️</div>
-        <h1 class="text-2xl font-bold text-slate-800 mb-2 italic">Family Load</h1>
-        <p class="text-slate-500 mb-8 text-sm leading-relaxed">Accedi per gestire il bilancio familiare e sincronizzare i dati.</p>
-        <button onclick="window.loginGoogle()" class="w-full bg-white border border-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 active:scale-95 transition-transform">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18">
-            Accedi con Google
-        </button>
-    </div>
-</div>
-
-<!-- App Principale -->
-<div id="app" class="hidden max-w-md mx-auto px-4 pt-6">
+<div id="app" class="max-w-md mx-auto px-4 pt-6">
     <header class="mb-6 text-center">
         <div class="flex justify-between items-center mb-4">
             <h1 class="text-xl font-bold text-slate-800 italic">Bilancio Famiglia</h1>
@@ -172,7 +157,6 @@
     </section>
 </div>
 
-<!-- Modal Storico -->
 <div id="archive-view" class="modal-view">
     <div class="max-w-md mx-auto px-4 pt-6">
         <div class="flex justify-between items-center mb-8">
