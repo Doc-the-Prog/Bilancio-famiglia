@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Family Load Tracker</title>
     
-    <!-- Meta per Web App -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Bilancio">
     
-    <!-- ICONA MIGLIORATA: Sfondo pieno per evitare la "F" di sistema -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233b82f6%22/><text y=%2275%22 x=%2210%22 font-family=%22sans-serif%22 font-size=%2270%22>⚖️</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233b82f6%22/><text y=%2275%22 x=%2210%22 font-family=%22sans-serif%22 font-size=%2270%22>⚖️</text></svg>">
 
@@ -36,12 +34,18 @@
         
         let history = [];
 
-        // --- FUNZIONI ESPORTATE MANUALMENTE SU WINDOW ---
-        // Questo garantisce che l'HTML le veda sempre
+        // Debug Console Visiva
+        const logDebug = (msg, isError = false) => {
+            const el = document.getElementById('debug-log');
+            el.innerText = msg;
+            el.className = isError ? "text-[10px] text-red-500 font-bold" : "text-[10px] text-slate-400";
+            console.log(msg);
+        };
+
         window.addEntry = async (taskId) => {
-            console.log("Cliccato task:", taskId);
+            logDebug("Tentativo invio...");
             if (!auth.currentUser) {
-                alert("Connessione in corso... riprova tra un secondo.");
+                logDebug("Errore: Utente non autenticato", true);
                 return;
             }
             
@@ -49,16 +53,6 @@
             const entryId = Date.now().toString();
             
             try {
-                // Feedback immediato nel log
-                const tempEntry = {
-                    id: entryId,
-                    user: localStorage.getItem('family_user') || 'Papà',
-                    label: task.label + ' (salvataggio...)',
-                    points: task.points,
-                    archived: false
-                };
-                renderTemporary(tempEntry);
-
                 await setDoc(doc(db, "history", entryId), {
                     user: localStorage.getItem('family_user') || 'Papà',
                     label: task.label,
@@ -67,21 +61,24 @@
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     archived: false
                 });
+                logDebug("Ultimo invio: OK");
             } catch (e) { 
-                console.error("Errore salvataggio:", e);
-                alert("Errore durante il salvataggio. Controlla la connessione.");
+                logDebug("Errore Firebase: " + e.code, true);
             }
         };
 
         window.removeEntry = async (id) => {
-            try { await deleteDoc(doc(db, "history", id)); } catch(e) { console.error(e); }
+            try { await deleteDoc(doc(db, "history", id)); } catch(e) { logDebug("Errore delete", true); }
         };
 
         window.archiveCurrentPeriod = async () => {
             const active = history.filter(h => !h.archived);
             if (active.length === 0) return;
-            const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
-            await Promise.all(promises);
+            try {
+                const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
+                await Promise.all(promises);
+                logDebug("Reset OK");
+            } catch(e) { logDebug("Errore Reset", true); }
         };
 
         window.removeMonth = async (monthKey) => {
@@ -89,95 +86,81 @@
             await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
         };
 
-        // Autenticazione e Sincronizzazione
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                console.log("Connesso come:", user.uid);
-                document.getElementById('status-dot').classList.replace('bg-orange-400', 'bg-green-500');
+                logDebug("Connesso.");
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500";
                 
                 onSnapshot(collection(db, "history"), (snapshot) => {
                     history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     history.sort((a, b) => new Date(b.date) - new Date(a.date));
                     window.currentHistory = history;
                     updateUI();
+                }, (err) => {
+                    logDebug("Errore snapshot: " + err.code, true);
                 });
             } else {
-                signInAnonymously(auth).catch(e => console.error("Errore Auth:", e));
+                logDebug("Autenticazione in corso...");
+                signInAnonymously(auth).catch(e => logDebug("Auth Fallita: " + e.code, true));
             }
         });
-
-        // Funzione per mostrare un caricamento locale
-        function renderTemporary(entry) {
-            const log = document.getElementById('recent-log');
-            const div = document.createElement('div');
-            div.className = "flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100 opacity-60";
-            div.innerHTML = `<span class="text-sm font-bold">${entry.label}</span>`;
-            log.prepend(div);
-        }
     </script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-        .task-card:active { transform: scale(0.92); background-color: #f1f5f9; }
-        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .task-card:active { transform: scale(0.95); opacity: 0.8; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
         .modal-view { display: none; position: fixed; inset: 0; background: white; z-index: 100; overflow-y: auto; }
         .modal-view.active { display: block; }
-        .icon-container { min-height: 48px; width: 100%; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; font-size: 2rem; }
+        .icon-container { min-height: 40px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.25rem; font-size: 1.5rem; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-10">
 
-<div id="app" class="max-w-md mx-auto px-4 pt-4">
+<div id="app" class="max-w-md mx-auto px-4 pt-6">
     <header class="mb-6">
-        <div class="flex justify-between items-center mb-4">
-            <div class="flex items-center gap-2">
-                <div id="status-dot" class="w-2 h-2 rounded-full bg-orange-400"></div>
-                <h1 class="text-xl font-black text-slate-800 tracking-tight italic">Family Load</h1>
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <div id="status-dot" class="w-2 h-2 rounded-full bg-orange-400"></div>
+                    <h1 class="text-lg font-bold text-slate-800 italic">Family Load</h1>
+                </div>
+                <div id="debug-log" class="text-[10px] text-slate-400">Inizializzazione...</div>
             </div>
-            <button onclick="toggleArchive(true)" class="text-xs font-bold text-blue-600 bg-blue-50 px-4 py-1.5 rounded-full shadow-sm">Cronologia</button>
+            <button onclick="toggleArchive(true)" class="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Storico</button>
         </div>
         
-        <div class="flex justify-center p-1 bg-slate-200 rounded-2xl">
-            <button onclick="setUser('Papà')" id="btn-Papà" class="flex-1 py-2.5 rounded-xl font-bold transition-all text-sm">Papà</button>
-            <button onclick="setUser('Mamma')" id="btn-Mamma" class="flex-1 py-2.5 rounded-xl font-bold transition-all text-sm">Mamma</button>
+        <div class="flex justify-center p-1 bg-slate-200 rounded-xl">
+            <button onclick="setUser('Papà')" id="btn-Papà" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Papà</button>
+            <button onclick="setUser('Mamma')" id="btn-Mamma" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Mamma</button>
         </div>
     </header>
 
-    <!-- Dashboard Punteggi -->
-    <section class="bg-white rounded-3xl p-6 shadow-sm mb-6 border border-slate-100">
-        <div class="w-full h-12 bg-slate-100 rounded-full overflow-hidden flex border-[6px] border-white shadow-inner">
-            <div id="bar-Papà" class="h-full bg-blue-500 transition-all duration-700 ease-out" style="width: 50%"></div>
-            <div id="bar-Mamma" class="h-full bg-rose-400 transition-all duration-700 ease-out" style="width: 50%"></div>
+    <section class="bg-white rounded-2xl p-6 shadow-sm mb-6 border border-slate-100 text-center">
+        <div class="w-full h-10 bg-slate-100 rounded-full overflow-hidden flex border-4 border-white shadow-inner">
+            <div id="bar-Papà" class="h-full bg-blue-500 transition-all duration-700" style="width: 50%"></div>
+            <div id="bar-Mamma" class="h-full bg-rose-400 transition-all duration-700" style="width: 50%"></div>
         </div>
-        <div class="flex justify-between mt-4 px-2">
-            <div class="flex flex-col">
-                <span class="text-slate-400 text-[10px] font-black uppercase tracking-widest">Papà</span>
-                <span id="pts-Papà" class="text-blue-600 text-xl font-black italic">0</span>
-            </div>
-            <div class="flex flex-col items-end">
-                <span class="text-slate-400 text-[10px] font-black uppercase tracking-widest">Mamma</span>
-                <span id="pts-Mamma" class="text-rose-500 text-xl font-black italic">0</span>
-            </div>
+        <div class="flex justify-between mt-3 text-sm font-bold px-1">
+            <span id="pts-Papà" class="text-blue-600">0 pt</span>
+            <span id="pts-Mamma" class="text-rose-500">0 pt</span>
         </div>
     </section>
 
-    <!-- Navigazione Categorie -->
-    <nav class="flex border-b border-slate-200 mb-6 sticky top-0 bg-slate-50/80 backdrop-blur-md z-10">
-        <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-4 font-bold text-xs uppercase tracking-tighter">Figlia</button>
-        <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-4 font-bold text-xs uppercase tracking-tighter">Casa</button>
-        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-4 font-bold text-xs uppercase tracking-tighter">Gestione</button>
-        <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-4 font-bold text-xs uppercase tracking-tighter">Altro</button>
+    <nav class="flex border-b border-slate-200 mb-6 sticky top-0 bg-slate-50/90 backdrop-blur-sm">
+        <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-3 font-semibold text-xs">Figlia</button>
+        <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-3 font-semibold text-xs">Casa</button>
+        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-3 font-semibold text-xs">Gestione</button>
+        <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-3 font-semibold text-xs">Altro</button>
     </nav>
 
-    <!-- Grid Task -->
     <div id="task-grid" class="grid grid-cols-2 gap-3"></div>
 
-    <!-- Log Recente -->
     <section class="mt-10">
         <div class="flex justify-between items-center mb-4 px-1">
-            <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] italic">Timeline</h3>
-            <button onclick="window.archiveCurrentPeriod()" class="text-[10px] bg-white border border-slate-200 text-slate-400 px-3 py-1 rounded-full font-bold">AZZERA</button>
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Attività recenti</h3>
+            <button onclick="window.archiveCurrentPeriod()" class="text-[10px] text-slate-400 font-bold border border-slate-200 px-2 py-1 rounded">RESET</button>
         </div>
         <div id="recent-log" class="space-y-2"></div>
     </section>
@@ -185,16 +168,15 @@
 
 <div id="archive-view" class="modal-view">
     <div class="max-w-md mx-auto px-4 pt-6">
-        <div class="flex justify-between items-center mb-8">
-            <h2 class="text-2xl font-black text-slate-800 italic">Storico Mesi</h2>
-            <button onclick="toggleArchive(false)" class="bg-slate-100 rounded-full w-10 h-10 flex items-center justify-center text-slate-500 text-2xl">&times;</button>
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold">Storico</h2>
+            <button onclick="toggleArchive(false)" class="text-slate-400 text-2xl">&times;</button>
         </div>
         <div id="archive-content" class="space-y-4 pb-10"></div>
     </div>
 </div>
 
 <script>
-    // Database dei task (costante)
     const TASKS = [
         { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
         { id: 'prepara_scuola', label: 'Prep. Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
@@ -202,26 +184,22 @@
         { id: 'addormentamento', label: 'Addormentamento', points: 3, cat: 'Bambina', icon: '😴' },
         { id: 'vestizione_figlia', label: 'Vestizione', points: 2, cat: 'Bambina', icon: '👗' },
         { id: 'doccia_figlia', label: 'Doccia', points: 3, cat: 'Bambina', icon: '🚿' },
-        { id: 'post_doccia_figlia', label: 'Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
-        { id: 'gioco', label: 'Gioco (30m)', points: 2, cat: 'Bambina', icon: '🧸' },
+        { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
+        { id: 'gioco', label: 'Gioco (30 min)', points: 2, cat: 'Bambina', icon: '🧸' },
         { id: 'spostamenti', label: 'Trasporto', points: 3, cat: 'Bambina', icon: '🏎️' },
-        { id: 'lavastoviglie', label: 'Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼🍽️' },
-        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
-        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹🍴' },
-        { id: 'lavatrice_carico', label: 'Lavatrice (Avvio)', points: 3, cat: 'Casa', icon: '🧼👕' },
-        { id: 'lavatrice_stendere', label: 'Lavatrice (Stendere)', points: 3, cat: 'Casa', icon: '🎏👕' },
+        { id: 'lavastoviglie', label: 'Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼' },
+        { id: 'cucina_pasto', label: 'Prep. Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
+        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹' },
+        { id: 'lavatrice_carico', label: 'Lavatrice (Avvio)', points: 3, cat: 'Casa', icon: '👕' },
+        { id: 'lavatrice_stendere', label: 'Lavatrice (Stendi)', points: 3, cat: 'Casa', icon: '🎏' },
         { id: 'aspirapolvere', label: 'Aspirapolvere', points: 3, cat: 'Casa', icon: '🧹' },
         { id: 'riordinare', label: 'Riordinare', points: 3, cat: 'Casa', icon: '🔀' },
         { id: 'pavimenti_parziale', label: 'Lavare Pavimenti', points: 5, cat: 'Casa', icon: '🧼' },
-        { id: 'pavimenti_totale', label: 'Pavimenti (Totale)', points: 5, cat: 'Casa', icon: '🧼✨' },
         { id: 'bagno_parziale', label: 'Pulizia Bagno', points: 5, cat: 'Casa', icon: '🚽' },
-        { id: 'bagno_totale', label: 'Bagno (Totale)', points: 5, cat: 'Casa', icon: '🚽✨' },
         { id: 'cottura', label: 'Piano Cottura', points: 2, cat: 'Casa', icon: '🔥' },
-        { id: 'piano_cucina', label: 'Pulizia Cucina', points: 1, cat: 'Casa', icon: '🧼🍳' },
-        { id: 'vestiti', label: 'Piegare Vestiti', points: 2, cat: 'Casa', icon: '🫳🏻👕' },
         { id: 'spesa', label: 'Spesa', points: 5, cat: 'Casa', icon: '🛒' },
         { id: 'burocrazia', label: 'Burocrazia', points: 4, cat: 'Testa', icon: '📂' },
-        { id: 'menu', label: 'Gestione Menù', points: 3, cat: 'Testa', icon: '📜' },
+        { id: 'menu', label: 'Menù', points: 3, cat: 'Testa', icon: '📜' },
         { id: 'altro_1pt', label: 'Altro 1 pt', points: 1, cat: 'Altro', icon: '🛠️' },
         { id: 'altro_3pt', label: 'Altro 3 pt', points: 3, cat: 'Altro', icon: '🛠️' },
         { id: 'altro_5pt', label: 'Altro 5 pt', points: 5, cat: 'Altro', icon: '🛠️' },
@@ -234,9 +212,9 @@
         document.querySelectorAll('[id^="btn-"]').forEach(btn => {
             const isActive = btn.id === `btn-${user}`;
             btn.classList.toggle('bg-white', isActive);
-            btn.classList.toggle('shadow-md', isActive);
+            btn.classList.toggle('shadow-sm', isActive);
             btn.classList.toggle('text-slate-800', isActive);
-            btn.classList.toggle('text-slate-400', !isActive);
+            btn.classList.toggle('text-slate-500', !isActive);
         });
     }
 
@@ -252,10 +230,10 @@
     function renderTasks() {
         const grid = document.getElementById('task-grid');
         grid.innerHTML = TASKS.filter(t => t.cat === currentTab).map(t => `
-            <button onclick="window.addEntry('${t.id}')" class="task-card bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center transition-transform">
+            <button onclick="window.addEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
                 <div class="icon-container">${t.icon}</div>
-                <span class="text-[11px] font-black text-slate-800 leading-tight uppercase tracking-tight">${t.label}</span>
-                <span class="text-[10px] font-black text-slate-400 mt-3 bg-slate-50 px-3 py-1 rounded-full">+${t.points}</span>
+                <span class="text-[11px] font-semibold text-slate-700 leading-tight">${t.label}</span>
+                <span class="text-[10px] text-slate-400 mt-2">+${t.points} PT</span>
             </button>
         `).join('');
     }
@@ -265,29 +243,25 @@
         const active = hist.filter(h => !h.archived);
         const stats = { 'Papà': 0, 'Mamma': 0 };
         active.forEach(h => stats[h.user] += h.points);
-        
         const total = stats['Papà'] + stats['Mamma'];
         const p1 = total === 0 ? 50 : (stats['Papà'] / total) * 100;
         const p2 = total === 0 ? 50 : (stats['Mamma'] / total) * 100;
         
         document.getElementById('bar-Papà').style.width = `${p1}%`;
         document.getElementById('bar-Mamma').style.width = `${p2}%`;
-        document.getElementById('pts-Papà').innerText = stats['Papà'];
-        document.getElementById('pts-Mamma').innerText = stats['Mamma'];
+        document.getElementById('pts-Papà').innerText = `${stats['Papà']} pt`;
+        document.getElementById('pts-Mamma').innerText = `${stats['Mamma']} pt`;
 
-        const logHtml = active.slice(0, 10).map(h => `
-            <div class="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        const logHtml = active.slice(0, 8).map(h => `
+            <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                 <div class="flex items-center">
-                    <div class="w-2.5 h-2.5 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} mr-4"></div>
-                    <div>
-                        <div class="font-black text-slate-800 text-xs uppercase">${h.label}</div>
-                        <div class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">${h.time}</div>
-                    </div>
+                    <div class="w-2 h-2 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} mr-3"></div>
+                    <span class="text-sm text-slate-700">${h.label}</span>
                 </div>
-                <button onclick="window.removeEntry('${h.id}')" class="p-2 text-slate-200 hover:text-red-400">✕</button>
+                <button onclick="window.removeEntry('${h.id}')" class="text-slate-300 px-2 text-lg">×</button>
             </div>
         `).join('');
-        document.getElementById('recent-log').innerHTML = logHtml || '<p class="text-center text-slate-300 py-10 text-[10px] font-bold uppercase tracking-widest">Nessuna attività</p>';
+        document.getElementById('recent-log').innerHTML = logHtml || '<p class="text-center text-slate-300 py-4 text-xs italic">Nessun dato</p>';
     }
 
     function toggleArchive(show) {
@@ -310,26 +284,19 @@
             months[key][h.user] += h.points;
         });
         content.innerHTML = Object.keys(months).map(key => `
-            <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-sm font-black text-slate-800 uppercase italic">${key}</h3>
-                    <button onclick="window.removeMonth('${key}')" class="text-[10px] font-black text-rose-300 uppercase">Elimina</button>
+            <div class="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                <div class="flex justify-between items-center mb-2 border-b border-slate-50 pb-2">
+                    <h3 class="text-xs font-bold text-slate-600 uppercase tracking-tighter">${key}</h3>
+                    <button onclick="window.removeMonth('${key}')" class="text-[9px] text-red-300 font-bold">ELIMINA</button>
                 </div>
-                <div class="flex justify-between">
-                    <div class="flex flex-col">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase">Papà</span>
-                        <span class="text-blue-500 font-black text-lg">${months[key].Papà} pt</span>
-                    </div>
-                    <div class="flex flex-col items-end">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase">Mamma</span>
-                        <span class="text-rose-500 font-black text-lg">${months[key].Mamma} pt</span>
-                    </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-blue-500 font-bold">Papà: ${months[key].Papà} pt</span>
+                    <span class="text-rose-500 font-bold">Mamma: ${months[key].Mamma} pt</span>
                 </div>
             </div>
         `).join('');
     }
 
-    // Inizializzazione
     setUser(localStorage.getItem('family_user') || 'Papà');
     setTab('Bambina');
 </script>
