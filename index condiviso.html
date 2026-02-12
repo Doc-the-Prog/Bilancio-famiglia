@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Load Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // Configurazione Firebase - L'ambiente fornirà le credenziali reali
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-tracker-v1';
+
+        // --- STATO ---
+        let history = [];
+        let userAuth = null;
+
+        // --- AUTENTICAZIONE ---
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) {
+                console.error("Errore Auth:", e);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userAuth = user;
+                // Sincronizzazione in tempo reale con Firestore
+                const q = collection(db, 'artifacts', appId, 'public', 'data', 'history');
+                onSnapshot(q, (snapshot) => {
+                    history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    updateUI();
+                }, (error) => {
+                    console.error("Errore Database:", error);
+                });
+            }
+        });
+
+        // --- AZIONI DATABASE ---
+        window.addEntry = async (taskId) => {
+            if (!userAuth) return;
+            const task = TASKS.find(t => t.id === taskId);
+            const entryId = Date.now().toString();
+            const entryData = {
+                user: localStorage.getItem('family_user') || 'Papà',
+                label: task.label,
+                points: task.points,
+                date: new Date().toISOString(),
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                archived: false,
+                uid: userAuth.uid
+            };
+
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', entryId), entryData);
+        };
+
+        window.removeEntry = async (id) => {
+            if (!userAuth) return;
+            const { deleteDoc, doc: fireDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            await deleteDoc(fireDoc(db, 'artifacts', appId, 'public', 'data', 'history', id));
+        };
+
+        window.archiveCurrentPeriod = async () => {
+            if (!userAuth || !confirm('Vuoi archiviare il periodo corrente?')) return;
+            const { updateDoc, doc: fireDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            
+            const batchPromises = history
+                .filter(h => !h.archived)
+                .map(h => updateDoc(fireDoc(db, 'artifacts', appId, 'public', 'data', 'history', h.id), { archived: true }));
+            
+            await Promise.all(batchPromises);
+        };
+
+        window.removeMonth = async (monthKey) => {
+            if (!userAuth || !confirm(`Eliminare i dati di ${monthKey}?`)) return;
+            const { deleteDoc, doc: fireDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
+            await Promise.all(toDelete.map(h => deleteDoc(fireDoc(db, 'artifacts', appId, 'public', 'data', 'history', h.id))));
+        };
+
+        window.clearHistory = async () => {
+            if (!userAuth || !confirm('ATTENZIONE: Questo cancellerà l\'intero database. Procedere?')) return;
+            const { deleteDoc, doc: fireDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            await Promise.all(history.map(h => deleteDoc(fireDoc(db, 'artifacts', appId, 'public', 'data', 'history', h.id))));
+        };
+
+        initAuth();
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .task-card:active { transform: scale(0.95); }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .modal-view { display: none; position: fixed; inset: 0; background: white; z-index: 100; overflow-y: auto; }
+        .modal-view.active { display: block; }
+        .icon-container { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; font-size: 1.875rem; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-10">
+
+<div id="app" class="max-w-md mx-auto px-4 pt-6">
+    <!-- Header -->
+    <header class="mb-6 text-center">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl font-bold text-slate-800">Bilancio Carico Famiglia</h1>
+            <button onclick="toggleArchive(true)" class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full italic">Vedi Storico</button>
+        </div>
+        <div class="flex justify-center p-1 bg-slate-200 rounded-xl">
+            <button onclick="setUser('Papà')" id="btn-Papà" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Papà</button>
+            <button onclick="setUser('Mamma')" id="btn-Mamma" class="flex-1 py-2 rounded-lg font-semibold transition-all text-sm">Mamma</button>
+        </div>
+    </header>
+
+    <!-- Bilancio -->
+    <section class="bg-white rounded-2xl p-6 shadow-sm mb-6 border border-slate-100">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bilancio Corrente</h2>
+            <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-bold" id="total-pts-display">0 pt totali</span>
+        </div>
+        <div class="flex justify-between mb-2 font-bold text-xs text-slate-500 uppercase tracking-wider">
+            <span>Papà</span>
+            <span>Mamma</span>
+        </div>
+        <div class="w-full h-8 bg-slate-100 rounded-full overflow-hidden flex border-2 border-slate-100">
+            <div id="bar-Papà" class="h-full bg-blue-500 transition-all duration-700 ease-out" style="width: 50%"></div>
+            <div id="bar-Mamma" class="h-full bg-rose-400 transition-all duration-700 ease-out" style="width: 50%"></div>
+        </div>
+        <div class="flex justify-between mt-3 text-sm font-bold">
+            <span id="pts-Papà" class="text-blue-600 font-mono">0 pt</span>
+            <span id="pts-Mamma" class="text-rose-500 font-mono">0 pt</span>
+        </div>
+    </section>
+
+    <!-- Tab Categorie -->
+    <nav class="flex border-b border-slate-200 mb-6 bg-white rounded-t-xl overflow-hidden">
+        <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-3 font-bold text-sm text-slate-400 transition-all">Bambina</button>
+        <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-3 font-bold text-sm text-slate-400 transition-all">Casa</button>
+        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-3 font-bold text-sm text-slate-400 transition-all">Testa</button>
+        <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-3 font-bold text-sm text-slate-400 transition-all">Altro</button>
+    </nav>
+
+    <!-- Griglia Task -->
+    <div id="task-grid" class="grid grid-cols-2 gap-3 min-h-[300px]"></div>
+
+    <!-- Log Recente -->
+    <section class="mt-10">
+        <div class="flex justify-between items-end mb-4 px-1">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ultime Attività</h3>
+            <button onclick="archiveCurrentPeriod()" class="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded font-bold uppercase">Reset & Archivia</button>
+        </div>
+        <div id="recent-log" class="space-y-2"></div>
+    </section>
+</div>
+
+<!-- Modal Storico -->
+<div id="archive-view" class="modal-view">
+    <div class="max-w-md mx-auto px-4 pt-6 pb-10">
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-bold text-slate-800">Storico Mensile</h2>
+            <button onclick="toggleArchive(false)" class="text-slate-400 p-2 font-bold text-2xl">&times;</button>
+        </div>
+        <div id="archive-content" class="space-y-8"></div>
+        <div class="mt-12 pt-8 border-t border-slate-100 text-center">
+            <button onclick="clearHistory()" class="text-[10px] text-red-300 font-bold uppercase tracking-widest">Azzera Database</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const TASKS = [
+        { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
+        { id: 'prepara_scuola', label: 'Prep. per Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
+        { id: 'prepara_nanna', label: 'Prep. per Nanna', points: 3, cat: 'Bambina', icon: '🌙' },
+        { id: 'addormentamento', label: 'Addormentamento', points: 3, cat: 'Bambina', icon: '😴' },
+        { id: 'vestizione_figlia', label: 'Vestizione Figlia', points: 2, cat: 'Bambina', icon: '👗' },
+        { id: 'doccia_figlia', label: 'Doccia Figlia', points: 3, cat: 'Bambina', icon: '🚿' },
+        { id: 'post_doccia_figlia', label: 'Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
+        { id: 'gioco', label: 'Gioco (30 min)', points: 2, cat: 'Bambina', icon: '🧸' },
+        { id: 'spostamenti', label: 'Scarrozzare Figlia', points: 3, cat: 'Bambina', icon: '🏎️' },
+        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼🍽️' },
+        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
+        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹🍴' },
+        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', points: 3, cat: 'Casa', icon: '🧼👕' },
+        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', points: 3, cat: 'Casa', icon: '🎏👕' },
+        { id: 'aspirapolvere', label: 'Aspirapolvere', points: 3, cat: 'Casa', icon: '🧹' },
+        { id: 'riordinare', label: 'Riordinare Casa', points: 3, cat: 'Casa', icon: '🔀' },
+        { id: 'pavimenti_parziale', label: 'Pavimenti Parziale', points: 5, cat: 'Casa', icon: '🧼' },
+        { id: 'pavimenti_totale', label: 'Pavimenti Tutta Casa', points: 5, cat: 'Casa', icon: '🧼✨' },
+        { id: 'bagno_parziale', label: 'Pulizia Bagno Base', points: 5, cat: 'Casa', icon: '🚽' },
+        { id: 'bagno_totale', label: 'Pulizia Bagno Profonda', points: 5, cat: 'Casa', icon: '🚽✨' },
+        { id: 'cottura', label: 'Piano Cottura', points: 2, cat: 'Casa', icon: '🔥' },
+        { id: 'piano_cucina', label: 'Mobili Cucina', points: 1, cat: 'Casa', icon: '🧼🍳' },
+        { id: 'vestiti', label: 'Piegare Vestiti', points: 2, cat: 'Casa', icon: '🫳🏻👕' },
+        { id: 'spesa', label: 'Fare la spesa', points: 5, cat: 'Casa', icon: '🛒' },
+        { id: 'burocrazia', label: 'Burocrazia', points: 4, cat: 'Testa', icon: '📂' },
+        { id: 'menu', label: 'Pianificazione Menù', points: 3, cat: 'Testa', icon: '📜' },
+        { id: 'altro_1pt', label: 'Altro 1 pt.', points: 1, cat: 'Altro', icon: '🛠️1️⃣' },
+        { id: 'altro_2pt', label: 'Altro 2 pt.', points: 2, cat: 'Altro', icon: '🛠️2️⃣' },
+        { id: 'altro_3pt', label: 'Altro 3 pt.', points: 3, cat: 'Altro', icon: '🛠️3️⃣' },
+        { id: 'altro_4pt', label: 'Altro 4 pt.', points: 4, cat: 'Altro', icon: '🛠️4️⃣' },
+        { id: 'altro_5pt', label: 'Altro 5 pt.', points: 5, cat: 'Altro', icon: '🛠️5️⃣' },
+    ];
+
+    let currentTab = 'Bambina';
+
+    function setUser(user) {
+        localStorage.setItem('family_user', user);
+        document.querySelectorAll('[id^="btn-"]').forEach(btn => {
+            const isActive = btn.id === `btn-${user}`;
+            btn.classList.toggle('bg-white', isActive);
+            btn.classList.toggle('shadow-sm', isActive);
+            btn.classList.toggle('text-slate-800', isActive);
+            btn.classList.toggle('text-slate-500', !isActive);
+        });
+    }
+
+    function setTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('[id^="tab-"]').forEach(t => {
+            t.classList.toggle('tab-active', t.id === `tab-${tab}`);
+            t.classList.toggle('text-slate-400', t.id !== `tab-${tab}`);
+        });
+        renderTasks();
+    }
+
+    function renderTasks() {
+        const grid = document.getElementById('task-grid');
+        grid.innerHTML = TASKS.filter(t => t.cat === currentTab).map(t => `
+            <button onclick="window.addEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center transition-all">
+                <div class="icon-container">${t.icon}</div>
+                <span class="text-[11px] font-bold text-slate-700 leading-tight h-8 flex items-center justify-center mt-1">${t.label}</span>
+                <span class="text-[10px] font-black text-slate-400 mt-2 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">${t.points} PT</span>
+            </button>
+        `).join('');
+    }
+
+    function updateUI() {
+        const currentTasks = history.filter(h => !h.archived);
+        const stats = { 'Papà': 0, 'Mamma': 0 };
+        currentTasks.forEach(h => { if(stats[h.user] !== undefined) stats[h.user] += h.points; });
+        
+        const total = stats['Papà'] + stats['Mamma'];
+        document.getElementById('total-pts-display').innerText = `${total} pt totali`;
+        
+        const p1 = total === 0 ? 50 : (stats['Papà'] / total) * 100;
+        const p2 = total === 0 ? 50 : (stats['Mamma'] / total) * 100;
+        
+        document.getElementById('bar-Papà').style.width = `${p1}%`;
+        document.getElementById('bar-Mamma').style.width = `${p2}%`;
+        document.getElementById('pts-Papà').innerText = `${stats['Papà']} pt`;
+        document.getElementById('pts-Mamma').innerText = `${stats['Mamma']} pt`;
+
+        const logHtml = history.slice(0, 10).map(h => `
+            <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 ${h.archived ? 'opacity-40 grayscale' : ''}">
+                <div class="flex items-center overflow-hidden">
+                    <div class="w-2 h-2 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} shrink-0 mr-3"></div>
+                    <span class="font-bold text-slate-700 text-sm truncate">${h.label}</span>
+                </div>
+                <div class="flex items-center ml-2 text-[10px] text-slate-400 font-mono">
+                    ${h.time}
+                    <button onclick="window.removeEntry('${h.id}')" class="ml-3 text-slate-300 hover:text-red-500">✕</button>
+                </div>
+            </div>
+        `).join('');
+        document.getElementById('recent-log').innerHTML = logHtml || '<p class="text-center text-slate-300 py-8 text-sm italic">In attesa di dati...</p>';
+    }
+
+    function toggleArchive(show) {
+        document.getElementById('archive-view').classList.toggle('active', show);
+        if(show) renderArchive();
+    }
+
+    function renderArchive() {
+        const content = document.getElementById('archive-content');
+        const archivedTasks = history.filter(h => h.archived);
+        if (archivedTasks.length === 0) {
+            content.innerHTML = '<p class="text-center text-slate-400 py-20 italic">L\'archivio apparirà qui una volta resettato il bilancio.</p>';
+            return;
+        }
+        const months = {};
+        archivedTasks.forEach(h => {
+            const key = new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+            if (!months[key]) months[key] = { Papà: 0, Mamma: 0 };
+            months[key][h.user] += h.points;
+        });
+        content.innerHTML = Object.keys(months).map(key => `
+            <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-lg font-bold text-slate-700 capitalize">${key}</h3>
+                    <button onclick="window.removeMonth('${key}')" class="text-[10px] font-bold text-red-300">Elimina</button>
+                </div>
+                <div class="flex justify-between text-xs font-bold text-slate-500">
+                    <span class="text-blue-600">Papà: ${months[key].Papà} pt</span>
+                    <span class="text-rose-500">Mamma: ${months[key].Mamma} pt</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Caricamento iniziale
+    setUser(localStorage.getItem('family_user') || 'Papà');
+    setTab('Bambina');
+</script>
+</body>
+</html>
