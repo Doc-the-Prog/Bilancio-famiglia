@@ -60,7 +60,6 @@
     <nav class="flex border-b border-slate-200 mb-6 bg-white rounded-t-xl overflow-hidden shadow-sm">
         <button onclick="setTab('Bambina')" id="tab-Bambina" class="flex-1 py-3 font-bold text-xs uppercase tracking-tighter">Figlia</button>
         <button onclick="setTab('Casa')" id="tab-Casa" class="flex-1 py-3 font-bold text-xs uppercase tracking-tighter">Casa</button>
-        <button onclick="setTab('Testa')" id="tab-Testa" class="flex-1 py-3 font-bold text-xs uppercase tracking-tighter">Gestione</button>
         <button onclick="setTab('Altro')" id="tab-Altro" class="flex-1 py-3 font-bold text-xs uppercase tracking-tighter">Altro</button>
     </nav>
 
@@ -89,36 +88,40 @@
     // --- DATI E LOGICA INTERFACCIA ---
     const TASKS = [
         { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
-        { id: 'prepara_scuola', label: 'Prep. per Scuola', points: 3, cat: 'Bambina', icon: '🏫' },
-        { id: 'prepara_nanna', label: 'Prep. per Nanna', points: 3, cat: 'Bambina', icon: '🌙' },
-        { id: 'addormentamento', label: 'Addormentamento', points: 3, cat: 'Bambina', icon: '😴' },
-        { id: 'vestizione_figlia', label: 'Vestizione Generico', points: 2, cat: 'Bambina', icon: '👗' },
-        { id: 'doccia_figlia', label: 'Doccia', points: 3, cat: 'Bambina', icon: '🚿' },
+        { id: 'prepara_scuola', label: 'Prep. Mattino', points: 4, cat: 'Bambina', icon: '🏫' },
+        { id: 'prepara_nanna', label: 'Prep. per Nanna', points: 2, cat: 'Bambina', icon: '🌙' },
+        { id: 'addormentamento', label: 'Addormentamento', points: 2, cat: 'Bambina', icon: '😴' },
+        { id: 'vestizione_figlia', label: 'Vestizione Generico', points: 1, cat: 'Bambina', icon: '👗' },
+        { id: 'doccia_figlia', label: 'Doccia', points: 2, cat: 'Bambina', icon: '🚿' },
         { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
-        { id: 'gioco', label: 'Gioco Insieme (30 min)', points: 2, cat: 'Bambina', icon: '🧸' },
-        { id: 'spostamenti', label: 'Scarrozzare figlia', points: 3, cat: 'Bambina', icon: '🏎️' },
-        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', points: 3, cat: 'Casa', icon: '🧼🍽️' },
-        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 5, cat: 'Casa', icon: '👨🏻‍🍳' },
+        { id: 'gioco', label: 'Gioco Insieme (30 min)', points: 1, cat: 'Bambina', icon: '🧸' },
+        { id: 'spostamenti', label: 'Scarrozzare figlia', points: 1, cat: 'Bambina', icon: '🏎️' },
+        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', points: 2, cat: 'Casa', icon: '🧼🍽️' },
+        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 3, cat: 'Casa', icon: '👨🏻‍🍳' },
         { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹🍴' },
-        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', points: 3, cat: 'Casa', icon: '🧼👕' },
-        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', points: 3, cat: 'Casa', icon: '🎏👕' },
+        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', points: 1, cat: 'Casa', icon: '🧼👕' },
+        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', points: 2, cat: 'Casa', icon: '🎏👕' },
         { id: 'aspirapolvere', label: 'Aspirapolvere', points: 3, cat: 'Casa', icon: '🧹' },
-        { id: 'riordinare', label: 'Riordinare casa', points: 3, cat: 'Casa', icon: '🔀' },
         { id: 'pavimenti_parziale', label: 'Lavare Pavimenti (cucina/soggiorno/ingresso)', points: 5, cat: 'Casa', icon: '🧼' },
-        { id: 'pavimenti_totale', label: 'Lavare Pavimenti (tutta casa)', points: 5, cat: 'Casa', icon: '🧼✨' },
-        { id: 'bagno_parziale', label: 'Pulizia Bagno (lavandino/bidet)', points: 5, cat: 'Casa', icon: '🚽' },
-        { id: 'bagno_totale', label: 'Pulizia Bagno (anche WC/doccia)', points: 5, cat: 'Casa', icon: '🚽✨' },
-        { id: 'cottura', label: 'Pulizia Piano Cottura', points: 2, cat: 'Casa', icon: '🔥' },
-        { id: 'piano_cucina', label: 'Pulizia Cucina (piano/mobili)', points: 1, cat: 'Casa', icon: '🧼🍳' },
+        { id: 'pavimenti_totale', label: 'Lavare Pavimenti (tutta casa)', points: 7, cat: 'Casa', icon: '🧼✨' },
+        { id: 'bagno_parziale', label: 'Pulizia Bagno (lavandino/bidet)', points: 3, cat: 'Casa', icon: '🚽' },
+        { id: 'bagno_totale', label: 'Pulizia Bagno (anche WC)', points: 5, cat: 'Casa', icon: '✨🚽' },
+        { id: 'bagno_totale', label: 'Pulizia Bagno (anche doccia)', points: 7, cat: 'Casa', icon: '✨🚿' },
+        { id: 'cottura', label: 'Pulizia Piano Cottura', points: 3, cat: 'Casa', icon: '🔥' },
+        { id: 'piano_cucina', label: 'Pulizia Cucina (piano/mobili)', points: 2, cat: 'Casa', icon: '🧼🍳' },
         { id: 'vestiti', label: 'Piegare Vestiti', points: 2, cat: 'Casa', icon: '🫳🏻👕' },
-        { id: 'spesa', label: 'Fare la spesa', points: 5, cat: 'Casa', icon: '🛒' },
-        { id: 'burocrazia', label: 'Burocrazia', points: 4, cat: 'Testa', icon: '📂' },
-        { id: 'menu', label: 'Menù', points: 3, cat: 'Testa', icon: '📜' },
+        { id: 'spesa', label: 'Fare la spesa', points: 3, cat: 'Casa', icon: '🛒' },
+        { id: 'menu', label: 'Menù', points: 3, cat: 'Casa', icon: '📜' },
         { id: 'altro_1pt', label: 'Altro 1 pt.', points: 1, cat: 'Altro', icon: '🛠️1️⃣' },
         { id: 'altro_2pt', label: 'Altro 2 pt.', points: 2, cat: 'Altro', icon: '🛠️2️⃣' },
         { id: 'altro_3pt', label: 'Altro 3 pt.', points: 3, cat: 'Altro', icon: '🛠️3️⃣' },
         { id: 'altro_4pt', label: 'Altro 4 pt.', points: 4, cat: 'Altro', icon: '🛠️4️⃣' },
         { id: 'altro_5pt', label: 'Altro 5 pt.', points: 5, cat: 'Altro', icon: '🛠️5️⃣' },
+        { id: 'altro_5pt', label: 'Altro 6 pt.', points: 6, cat: 'Altro', icon: '🛠️6️⃣' },
+        { id: 'altro_5pt', label: 'Altro 7 pt.', points: 7, cat: 'Altro', icon: '🛠️7️' },
+        { id: 'altro_5pt', label: 'Altro 8 pt.', points: 8, cat: 'Altro', icon: '🛠️8️⃣' },
+        { id: 'altro_5pt', label: 'Altro 9 pt.', points: 9, cat: 'Altro', icon: '🛠️9️⃣' },
+        { id: 'altro_5pt', label: 'Altro 10 pt.', points: 10, cat: 'Altro', icon: '🛠️🔟' },
     ];
 
     let currentTab = 'Bambina';
@@ -301,5 +304,6 @@
 </script>
 </body>
 </html>
+
 
 
