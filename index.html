@@ -10,9 +10,7 @@
     <meta name="apple-mobile-web-app-title" content="Bilancio">
 
     <link rel="icon" href="https://emojiapi.dev/api/v1/balance_scale/512.png">
-    
     <link rel="apple-touch-icon" href="https://emojiapi.dev/api/v1/balance_scale/512.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="https://emojiapi.dev/api/v1/balance_scale/180.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -23,7 +21,10 @@
         .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
         .modal-view { display: none; position: fixed; inset: 0; background: white; z-index: 100; overflow-y: auto; }
         .modal-view.active { display: block; }
-        .icon-container { min-height: 48px; width: 100%; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; font-size: 1.8rem; gap: 4px; }
+        /* Stile per il selettore punti */
+        .score-overlay { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.8); z-index: 200; align-items: center; justify-content: center; padding: 1rem; }
+        .score-overlay.active { display: flex; }
+        .icon-container { min-height: 48px; width: 100%; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; font-size: 1.8rem; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-10">
@@ -74,6 +75,25 @@
     </section>
 </div>
 
+<div id="score-selector" class="score-overlay">
+    <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl">
+        <p class="text-center font-bold text-slate-800 mb-4" id="selected-task-label">Scegli il punteggio</p>
+        <div class="grid grid-cols-5 gap-2">
+            <button onclick="confirmScore(1)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">1</button>
+            <button onclick="confirmScore(2)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">2</button>
+            <button onclick="confirmScore(3)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">3</button>
+            <button onclick="confirmScore(4)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">4</button>
+            <button onclick="confirmScore(5)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">5</button>
+            <button onclick="confirmScore(6)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">6</button>
+            <button onclick="confirmScore(7)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">7</button>
+            <button onclick="confirmScore(8)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">8</button>
+            <button onclick="confirmScore(9)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">9</button>
+            <button onclick="confirmScore(10)" class="aspect-square rounded-xl bg-slate-100 font-bold text-slate-700 hover:bg-blue-500 hover:text-white transition-colors">10</button>
+        </div>
+        <button onclick="closeScoreSelector()" class="w-full mt-6 py-3 text-slate-400 font-semibold text-sm">Annulla</button>
+    </div>
+</div>
+
 <div id="archive-view" class="modal-view">
     <div class="max-w-md mx-auto px-4 pt-6">
         <div class="flex justify-between items-center mb-8">
@@ -85,46 +105,33 @@
 </div>
 
 <script>
-    // --- DATI E LOGICA INTERFACCIA ---
+    // --- DATI ---
     const TASKS = [
-        { id: 'pannolino', label: 'Cambio Pannolino', points: 1, cat: 'Bambina', icon: '🚼' },
-        { id: 'prepara_scuola', label: 'Prep. Mattino', points: 4, cat: 'Bambina', icon: '🏫' },
-        { id: 'prepara_nanna', label: 'Prep. per Nanna', points: 2, cat: 'Bambina', icon: '🌙' },
-        { id: 'addormentamento', label: 'Addormentamento', points: 2, cat: 'Bambina', icon: '😴' },
-        { id: 'vestizione_figlia', label: 'Vestizione Generico', points: 1, cat: 'Bambina', icon: '👗' },
-        { id: 'doccia_figlia', label: 'Doccia', points: 2, cat: 'Bambina', icon: '🚿' },
-        { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', points: 3, cat: 'Bambina', icon: '🧖🏻‍♀️' },
-        { id: 'gioco', label: 'Gioco Insieme (30 min)', points: 1, cat: 'Bambina', icon: '🧸' },
-        { id: 'spostamenti', label: 'Scarrozzare figlia', points: 1, cat: 'Bambina', icon: '🏎️' },
-        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', points: 2, cat: 'Casa', icon: '🧼🍽️' },
-        { id: 'cucina_pasto', label: 'Preparazione Pasto', points: 3, cat: 'Casa', icon: '👨🏻‍🍳' },
-        { id: 'sparecchiare', label: 'Sparecchiare', points: 1, cat: 'Casa', icon: '🧹🍴' },
-        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', points: 1, cat: 'Casa', icon: '🧼👕' },
-        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', points: 2, cat: 'Casa', icon: '🎏👕' },
-        { id: 'aspirapolvere', label: 'Aspirapolvere', points: 3, cat: 'Casa', icon: '🧹' },
-        { id: 'pavimenti_parziale', label: 'Lavare Pavimenti (cucina/soggiorno/ingresso)', points: 5, cat: 'Casa', icon: '🧼' },
-        { id: 'pavimenti_totale', label: 'Lavare Pavimenti (tutta casa)', points: 7, cat: 'Casa', icon: '🧼✨' },
-        { id: 'bagno_parziale', label: 'Pulizia Bagno (lavandino/bidet)', points: 3, cat: 'Casa', icon: '🚽' },
-        { id: 'bagno_totale', label: 'Pulizia Bagno (anche WC)', points: 5, cat: 'Casa', icon: '✨🚽' },
-        { id: 'bagno_totale', label: 'Pulizia Bagno (anche doccia)', points: 7, cat: 'Casa', icon: '✨🚿' },
-        { id: 'cottura', label: 'Pulizia Piano Cottura', points: 3, cat: 'Casa', icon: '🔥' },
-        { id: 'piano_cucina', label: 'Pulizia Cucina (piano/mobili)', points: 2, cat: 'Casa', icon: '🧼🍳' },
-        { id: 'vestiti', label: 'Piegare Vestiti', points: 2, cat: 'Casa', icon: '🫳🏻👕' },
-        { id: 'spesa', label: 'Fare la spesa', points: 3, cat: 'Casa', icon: '🛒' },
-        { id: 'menu', label: 'Menù', points: 3, cat: 'Casa', icon: '📜' },
-        { id: 'altro_1pt', label: 'Altro 1 pt.', points: 1, cat: 'Altro', icon: '🛠️1️⃣' },
-        { id: 'altro_2pt', label: 'Altro 2 pt.', points: 2, cat: 'Altro', icon: '🛠️2️⃣' },
-        { id: 'altro_3pt', label: 'Altro 3 pt.', points: 3, cat: 'Altro', icon: '🛠️3️⃣' },
-        { id: 'altro_4pt', label: 'Altro 4 pt.', points: 4, cat: 'Altro', icon: '🛠️4️⃣' },
-        { id: 'altro_5pt', label: 'Altro 5 pt.', points: 5, cat: 'Altro', icon: '🛠️5️⃣' },
-        { id: 'altro_5pt', label: 'Altro 6 pt.', points: 6, cat: 'Altro', icon: '🛠️6️⃣' },
-        { id: 'altro_5pt', label: 'Altro 7 pt.', points: 7, cat: 'Altro', icon: '🛠️7️' },
-        { id: 'altro_5pt', label: 'Altro 8 pt.', points: 8, cat: 'Altro', icon: '🛠️8️⃣' },
-        { id: 'altro_5pt', label: 'Altro 9 pt.', points: 9, cat: 'Altro', icon: '🛠️9️⃣' },
-        { id: 'altro_5pt', label: 'Altro 10 pt.', points: 10, cat: 'Altro', icon: '🛠️🔟' },
+        { id: 'pannolino', label: 'Cambio Pannolino', cat: 'Bambina', icon: '🚼' },
+        { id: 'prepara_mattina', label: 'Prep. Mattino', cat: 'Bambina', icon: '🏫' },
+        { id: 'prepara_nanna', label: 'Prep. per Nanna', cat: 'Bambina', icon: '🌙' },
+        { id: 'addormentamento', label: 'Addormentamento', cat: 'Bambina', icon: '😴' },
+        { id: 'vestizione_figlia', label: 'Vestizione Generico', cat: 'Bambina', icon: '👗' },
+        { id: 'doccia_figlia', label: 'Doccia', cat: 'Bambina', icon: '🚿' },
+        { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', cat: 'Bambina', icon: '🧖🏻‍♀️' },
+        { id: 'gioco', label: 'Gioco Insieme (30 min)', cat: 'Bambina', icon: '🧸' },
+        { id: 'spostamenti', label: 'Scarrozzare figlia', cat: 'Bambina', icon: '🏎️' },
+        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', cat: 'Casa', icon: '🍽️' },
+        { id: 'cucina_pasto', label: 'Preparazione Pasto', cat: 'Casa', icon: '👨🏻‍🍳' },
+        { id: 'sparecchiare', label: 'Sparecchiare', cat: 'Casa', icon: '🍴' },
+        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', cat: 'Casa', icon: '🧼👕' },
+        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', cat: 'Casa', icon: '🎏👕' },
+        { id: 'aspirapolvere', label: 'Aspirapolvere', cat: 'Casa', icon: '🧹' },
+        { id: 'pavimenti', label: 'Lavare Pavimenti', cat: 'Casa', icon: '🧼' },
+        { id: 'bagno', label: 'Pulizia Bagno', cat: 'Casa', icon: '🚽' },
+        { id: 'cottura', label: 'Pulizia Piano Cottura', cat: 'Casa', icon: '🔥' },
+        { id: 'cucina_pulizia', label: 'Pulizia Cucina', cat: 'Casa', icon: '🧽' },
+        { id: 'spesa', label: 'Fare la spesa', cat: 'Casa', icon: '🛒' },
+        { id: 'altro', label: 'Altra attività', cat: 'Altro', icon: '🛠️' }
     ];
 
     let currentTab = 'Bambina';
+    let pendingTaskId = null; // Per ricordare quale task è stato cliccato
 
     function setUser(user) {
         localStorage.setItem('family_user', user);
@@ -149,12 +156,31 @@
     function renderTasks() {
         const grid = document.getElementById('task-grid');
         grid.innerHTML = TASKS.filter(t => t.cat === currentTab).map(t => `
-            <button onclick="window.dbAddEntry('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
+            <button onclick="openScoreSelector('${t.id}')" class="task-card bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
                 <div class="icon-container">${t.icon}</div>
                 <span class="text-[11px] font-bold text-slate-700 leading-tight">${t.label}</span>
-                <span class="text-[10px] font-black text-slate-400 mt-2 bg-slate-50 px-2 py-0.5 rounded-full">${t.points} PT</span>
             </button>
         `).join('');
+    }
+
+    // --- GESTIONE PUNTEGGIO ---
+    function openScoreSelector(taskId) {
+        const task = TASKS.find(t => t.id === taskId);
+        pendingTaskId = taskId;
+        document.getElementById('selected-task-label').innerText = task.label;
+        document.getElementById('score-selector').classList.add('active');
+    }
+
+    function closeScoreSelector() {
+        document.getElementById('score-selector').classList.remove('active');
+        pendingTaskId = null;
+    }
+
+    function confirmScore(points) {
+        if (pendingTaskId && window.dbAddEntryWithPoints) {
+            window.dbAddEntryWithPoints(pendingTaskId, points);
+            closeScoreSelector();
+        }
     }
 
     function toggleArchive(show) {
@@ -169,7 +195,6 @@
 </script>
 
 <script type="module">
-    // --- FIREBASE SETUP ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -188,15 +213,15 @@
     const auth = getAuth(app);
     let history = [];
 
-    // Funzioni Database esposte globalmente
-    window.dbAddEntry = async (taskId) => {
+    // FUNZIONE PER RICEVERE IL PUNTEGGIO
+    window.dbAddEntryWithPoints = async (taskId, points) => {
         const task = TASKS.find(t => t.id === taskId);
         const entryId = Date.now().toString();
         try {
             await setDoc(doc(db, "history", entryId), {
                 user: localStorage.getItem('family_user') || 'Papà',
                 label: task.label,
-                points: task.points,
+                points: points, // Usa i punti passati dal secondo click
                 date: new Date().toISOString(),
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 archived: false
@@ -209,30 +234,18 @@
     };
 
     window.dbRemoveMonth = async (monthKey) => {
-    const confermata = confirm(`Sei sicuro di voler eliminare definitivamente tutti i dati di ${monthKey}? Questa azione non si può annullare.`);
-    
-    if (confermata) {
-        try {
-            const toDelete = history.filter(h => 
-                new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey
-            );
+        if (confirm(`Sei sicuro di eliminare ${monthKey}?`)) {
+            const toDelete = history.filter(h => new Date(h.date).toLocaleString('it-IT', { month: 'long', year: 'numeric' }) === monthKey);
             await Promise.all(toDelete.map(h => deleteDoc(doc(db, "history", h.id))));
-            console.log(`Mese ${monthKey} eliminato con successo.`);
-        } catch (e) {
-            console.error("Errore durante l'eliminazione del mese:", e);
-            alert("Si è verificato un errore durante l'eliminazione.");
         }
-    }
-};
-
-    document.getElementById('reset-trigger').onclick = async () => {
-        if(!confirm("Vuoi archiviare i punti attuali e iniziare un nuovo periodo?")) return;
-        const active = history.filter(h => !h.archived);
-        const promises = active.map(h => updateDoc(doc(db, "history", h.id), { archived: true }));
-        await Promise.all(promises);
     };
 
-    // Aggiornamento Grafica
+    document.getElementById('reset-trigger').onclick = async () => {
+        if(!confirm("Vuoi archiviare i punti attuali?")) return;
+        const active = history.filter(h => !h.archived);
+        await Promise.all(active.map(h => updateDoc(doc(db, "history", h.id), { archived: true })));
+    };
+
     function updateStats() {
         const active = history.filter(h => !h.archived);
         const stats = { 'Papà': 0, 'Mamma': 0 };
@@ -252,7 +265,7 @@
                 <div class="flex items-center">
                     <div class="w-2 h-6 rounded-full ${h.user === 'Papà' ? 'bg-blue-500' : 'bg-rose-400'} mr-3"></div>
                     <div>
-                        <p class="font-bold text-slate-700 text-xs">${h.label}</p>
+                        <p class="font-bold text-slate-700 text-xs">${h.label} (${h.points} pt)</p>
                         <p class="text-[9px] text-slate-400 uppercase font-bold">${h.user} • ${h.time}</p>
                     </div>
                 </div>
@@ -289,7 +302,6 @@
         `).join('');
     };
 
-    // Monitoraggio dati
     onAuthStateChanged(auth, (user) => {
         if (user) {
             onSnapshot(collection(db, "history"), (snapshot) => {
@@ -304,6 +316,3 @@
 </script>
 </body>
 </html>
-
-
-
