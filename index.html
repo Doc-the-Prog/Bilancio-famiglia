@@ -107,28 +107,28 @@
 <script>
     // --- DATI ---
     const TASKS = [
-        { id: 'pannolino', label: 'Cambio Pannolino', cat: 'Bambina', icon: '🚼' },
-        { id: 'prepara_mattina', label: 'Prep. Mattino', cat: 'Bambina', icon: '🏫' },
-        { id: 'prepara_nanna', label: 'Prep. per Nanna', cat: 'Bambina', icon: '🌙' },
-        { id: 'addormentamento', label: 'Addormentamento', cat: 'Bambina', icon: '😴' },
-        { id: 'vestizione_figlia', label: 'Vestizione Generico', cat: 'Bambina', icon: '👗' },
-        { id: 'doccia_figlia', label: 'Doccia', cat: 'Bambina', icon: '🚿' },
-        { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', cat: 'Bambina', icon: '🧖🏻‍♀️' },
-        { id: 'gioco', label: 'Gioco Insieme (30 min)', cat: 'Bambina', icon: '🧸' },
-        { id: 'spostamenti', label: 'Scarrozzare figlia', cat: 'Bambina', icon: '🏎️' },
-        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', cat: 'Casa', icon: '🍽️' },
-        { id: 'cucina_pasto', label: 'Preparazione Pasto', cat: 'Casa', icon: '👨🏻‍🍳' },
-        { id: 'sparecchiare', label: 'Sparecchiare', cat: 'Casa', icon: '🍴' },
-        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', cat: 'Casa', icon: '🧼👕' },
-        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', cat: 'Casa', icon: '🎏👕' },
-        { id: 'piegare_vestiti', label: 'Piegare Vestiti', cat: 'Casa', icon: '🫳🏼👕' },
-        { id: 'aspirapolvere', label: 'Aspirapolvere', cat: 'Casa', icon: '🧹' },
-        { id: 'pavimenti', label: 'Lavare Pavimenti', cat: 'Casa', icon: '🧼' },
-        { id: 'bagno', label: 'Pulizia Bagno', cat: 'Casa', icon: '🚽' },
-        { id: 'cottura', label: 'Pulizia Piano Cottura', cat: 'Casa', icon: '🔥' },
-        { id: 'cucina_pulizia', label: 'Pulizia Cucina', cat: 'Casa', icon: '🧽' },
-        { id: 'spesa', label: 'Fare la spesa', cat: 'Casa', icon: '🛒' },
-        { id: 'altro', label: 'Altra attività', cat: 'Altro', icon: '🛠️' }
+        { id: 'pannolino', label: 'Cambio Pannolino', cat: 'Bambina', icon: '🚼', suggestedScores: [1] },
+        { id: 'prepara_mattina', label: 'Prep. Mattino', cat: 'Bambina', icon: '🏫', suggestedScores: [3] },
+        { id: 'prepara_nanna', label: 'Prep. per Nanna', cat: 'Bambina', icon: '🌙', suggestedScores: [2] },
+        { id: 'addormentamento', label: 'Addormentamento', cat: 'Bambina', icon: '😴', suggestedScores: [2] },
+        { id: 'vestizione_figlia', label: 'Vestizione Generico', cat: 'Bambina', icon: '👗', suggestedScores: [1] },
+        { id: 'doccia_figlia', label: 'Doccia', cat: 'Bambina', icon: '🚿', suggestedScores: [2] },
+        { id: 'post_doccia_figlia', label: 'Prep. Post Doccia', cat: 'Bambina', icon: '🧖🏻‍♀️', suggestedScores: [3] },
+        { id: 'gioco', label: 'Gioco Insieme (30 min)', cat: 'Bambina', icon: '🧸', suggestedScores: [1] },
+        { id: 'spostamenti', label: 'Scarrozzare figlia', cat: 'Bambina', icon: '🏎️', suggestedScores: [1] },
+        { id: 'lavastoviglie', label: 'Svuotare Lavastoviglie', cat: 'Casa', icon: '🍽️', suggestedScores: [2] },
+        { id: 'cucina_pasto', label: 'Preparazione Pasto', cat: 'Casa', icon: '👨🏻‍🍳', suggestedScores: [3] },
+        { id: 'sparecchiare', label: 'Sparecchiare', cat: 'Casa', icon: '🍴', suggestedScores: [1] },
+        { id: 'lavatrice_carico', label: 'Mandare Lavatrice', cat: 'Casa', icon: '🧼👕', suggestedScores: [1,2] },
+        { id: 'lavatrice_stendere', label: 'Stendere Lavatrice', cat: 'Casa', icon: '🎏👕', suggestedScores: [2] },
+        { id: 'piegare_vestiti', label: 'Piegare Vestiti', cat: 'Casa', icon: '🫳🏼👕', suggestedScores: [2] },
+        { id: 'aspirapolvere', label: 'Aspirapolvere', cat: 'Casa', icon: '🧹', suggestedScores: [1,4] },
+        { id: 'pavimenti', label: 'Lavare Pavimenti', cat: 'Casa', icon: '🧼', suggestedScores: [5,7] },
+        { id: 'bagno', label: 'Pulizia Bagno', cat: 'Casa', icon: '🚽', suggestedScores: [3,5,7] },
+        { id: 'cottura', label: 'Pulizia Piano Cottura', cat: 'Casa', icon: '🔥', suggestedScores: [3] },
+        { id: 'cucina_pulizia', label: 'Pulizia Cucina', cat: 'Casa', icon: '🧽', suggestedScores: [1,2] },
+        { id: 'spesa', label: 'Fare la spesa', cat: 'Casa', icon: '🛒', suggestedScores: [3] },
+        { id: 'altro', label: 'Altra attività', cat: 'Altro', icon: '🛠️'}
     ];
 
     let currentTab = 'Bambina';
@@ -317,4 +317,5 @@
 </script>
 </body>
 </html>
+
 
