@@ -166,11 +166,41 @@
 
     // --- GESTIONE PUNTEGGIO ---
     function openScoreSelector(taskId) {
-        const task = TASKS.find(t => t.id === taskId);
-        pendingTaskId = taskId;
-        document.getElementById('selected-task-label').innerText = task.label;
-        document.getElementById('score-selector').classList.add('active');
+    const task = TASKS.find(t => t.id === taskId);
+    pendingTaskId = taskId;
+    
+    document.getElementById('selected-task-label').innerText = task.label;
+    
+    // Recuperiamo l'array dei suggerimenti (se manca, usiamo un array vuoto)
+    const suggestions = task.suggestedScores || [];
+    
+    const buttonsContainer = document.querySelector('#score-selector .grid');
+    buttonsContainer.innerHTML = ''; 
+    
+    for (let i = 1; i <= 10; i++) {
+        const isSuggested = suggestions.includes(i);
+        const hasAnySuggestion = suggestions.length > 0; // Controlla se esistono suggerimenti per questo task
+        
+        const btn = document.createElement('button');
+        btn.onclick = () => confirmScore(i);
+        btn.innerText = i;
+        
+        btn.className = "aspect-square rounded-xl font-bold transition-all ";
+        
+        if (isSuggested) {
+            // Stile evidenziato
+            btn.className += "bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105";
+        } else {
+            // Se ci sono suggerimenti, sbiadiamo gli altri. 
+            // Se NON ci sono suggerimenti (come in "Altro"), li lasciamo tutti normali.
+            btn.className += "bg-slate-100 text-slate-700 " + (hasAnySuggestion ? "opacity-50" : "opacity-100");
+        }
+        
+        buttonsContainer.appendChild(btn);
     }
+    
+    document.getElementById('score-selector').classList.add('active');
+}
 
     function closeScoreSelector() {
         document.getElementById('score-selector').classList.remove('active');
@@ -317,5 +347,3 @@
 </script>
 </body>
 </html>
-
-
